@@ -1,0 +1,4 @@
+# 语言统计：文章 HTML 与文档不参与 GitHub 语言占比计算
+article/** linguist-documentation
+docs/** linguist-documentation
+*.html linguist-documentation
