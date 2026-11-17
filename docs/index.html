@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FastAPI RAG 架构实践系列</title>
+<style>
+  :root {
+    --teal: #05998b;
+    --teal-dark: #0f766e;
+    --teal-deep: #115e59;
+    --bg: #f8fafc;
+    --panel: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+    --code-bg: #0f172a;
+    --code-text: #e2e8f0;
+    --accent: #f59e0b;
+    --mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--teal-dark); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background: linear-gradient(135deg, #0f766e 0%, #05998b 45%, #14b8a6 100%);
+    color: #fff;
+    padding: 72px 24px 56px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 80% 20%, rgba(255,255,255,.18), transparent 45%),
+                radial-gradient(circle at 15% 80%, rgba(255,255,255,.10), transparent 40%);
+  }
+  .hero-inner { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; }
+  .hero .kicker {
+    display: inline-block; font-size: 13px; letter-spacing: 2px; text-transform: uppercase;
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.35);
+    padding: 5px 14px; border-radius: 999px; margin-bottom: 20px;
+  }
+  .hero h1 { font-size: 40px; margin: 0 0 14px; font-weight: 800; letter-spacing: .5px; }
+  .hero p.sub { font-size: 17px; opacity: .92; max-width: 640px; margin: 0 auto 28px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .badge {
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3);
+    padding: 6px 14px; border-radius: 8px; font-size: 13px; font-family: var(--mono);
+  }
+
+  /* ---------- Layout ---------- */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 240px 1fr; gap: 32px; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } .toc { display: none; } }
+
+  .toc { position: sticky; top: 24px; align-self: start; }
+  .toc .toc-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 10px; }
+  .toc a {
+    display: block; padding: 7px 12px; margin: 2px 0; border-radius: 8px; color: var(--muted);
+    font-size: 14px; border-left: 2px solid transparent;
+  }
+  .toc a:hover { background: #eef6f5; color: var(--teal-dark); text-decoration: none; }
+  .toc a.active { background: #eef6f5; color: var(--teal-dark); border-left-color: var(--teal); font-weight: 600; }
+
+  main { min-width: 0; }
+
+  /* ---------- Sections ---------- */
+  section {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 30px 32px; margin-bottom: 28px; box-shadow: 0 1px 3px rgba(15,23,42,.05);
+  }
+  .sec-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 30px; height: 30px; border-radius: 8px; background: var(--teal);
+    color: #fff; font-weight: 700; font-size: 15px; margin-right: 10px; font-family: var(--mono);
+  }
+  h2 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; }
+  h3 { font-size: 18px; margin: 26px 0 8px; color: var(--teal-deep); }
+  p { margin: 10px 0; }
+  .lead { color: var(--muted); font-size: 15px; }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    border-left: 4px solid var(--teal); background: #f0fbfa; border-radius: 8px;
+    padding: 14px 18px; margin: 18px 0; font-size: 14.5px;
+  }
+  .callout.warn { border-left-color: var(--accent); background: #fffbeb; }
+  .callout b { color: var(--teal-deep); }
+  .callout.warn b { color: #b45309; }
+
+  /* ---------- Code ---------- */
+  pre {
+    background: var(--code-bg); color: var(--code-text); border-radius: 12px;
+    padding: 0; margin: 16px 0; overflow: hidden; font-size: 13.5px;
+  }
+  pre .bar {
+    display: flex; align-items: center; gap: 6px; padding: 10px 14px;
+    background: rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  pre .dot { width: 11px; height: 11px; border-radius: 50%; }
+  pre .dot.r { background: #ff5f57; } pre .dot.y { background: #febc2e; } pre .dot.g { background: #28c840; }
+  pre .lang { margin-left: auto; font-size: 11px; color: #64748b; font-family: var(--mono); text-transform: uppercase; letter-spacing: 1px; }
+  pre code { display: block; padding: 16px 18px; overflow-x: auto; font-family: var(--mono); line-height: 1.6; }
+  .tok-c { color: #64748b; font-style: italic; }
+  .tok-s { color: #fbbf24; }
+  .tok-k { color: #7dd3fc; }
+  .tok-f { color: #c4b5fd; }
+  .tok-d { color: #5eead4; }
+  .tok-n { color: #fca5a5; }
+
+  /* ---------- Table ---------- */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  th { background: #f1f5f9; color: var(--teal-deep); font-weight: 600; }
+  tr:hover td { background: #fafdfc; }
+  code.inline { background: #eef2f7; color: #0f766e; padding: 2px 7px; border-radius: 5px; font-family: var(--mono); font-size: 13px; }
+
+  /* ---------- Tree ---------- */
+  .tree { font-family: var(--mono); font-size: 13px; background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; line-height: 1.9; color: #334155; overflow-x: auto; }
+  .tree .cm { color: #94a3b8; }
+
+  footer { text-align: center; color: var(--muted); padding: 32px; font-size: 13px; }
+  .backtop { position: fixed; right: 24px; bottom: 24px; width: 44px; height: 44px; border-radius: 50%; background: var(--teal); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 4px 12px rgba(5,153,139,.4); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <span class="kicker">Architecture Practice Series</span>
+    <h1>FastAPI × RAG 架构实践系列</h1>
+    <p class="sub">手写一个从「文档上传」到「智能问答」的闭环工程，逐模块拆解 FastAPI + SQLAlchemy + Celery + Redis 的生产级实践。</p>
+    <div class="badges">
+      <span class="badge">FastAPI</span>
+      <span class="badge">Pydantic v2</span>
+      <span class="badge">SQLAlchemy 2.0 async</span>
+      <span class="badge">Celery</span>
+      <span class="badge">Redis</span>
+      <span class="badge">APScheduler</span>
+      <span class="badge">RAG</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <nav class="toc">
+    <div class="toc-title">目录</div>
+    <a href="#s0">0 · 为什么是这套栈</a>
+    <a href="#s1">1 · 架构总览</a>
+    <a href="#s2">2 · 项目结构分层</a>
+    <a href="#s3">3 · 配置管理</a>
+    <a href="#s4">4 · 数据库层</a>
+    <a href="#s5">5 · RAG 五步链路</a>
+    <a href="#s6">6 · 异步任务 Celery</a>
+    <a href="#s7">7 · 定时任务</a>
+    <a href="#s8">8 · 测试</a>
+    <a href="#s9">9 · 生产化清单</a>
+  </nav>
+
+  <main>
+
+    <!-- 0 -->
+    <section id="s0">
+      <h2><span class="sec-num">0</span>为什么是这套栈</h2>
+      <p class="lead">选型不是追新，而是「每一层都解决一个明确的问题」。</p>
+      <table>
+        <thead><tr><th>层</th><th>选型</th><th>解决什么问题</th></tr></thead>
+        <tbody>
+          <tr><td>Web</td><td>FastAPI</td><td>原生 async + 自动 OpenAPI 文档 + 依赖注入</td></tr>
+          <tr><td>配置</td><td>Pydantic v2</td><td>类型安全的环境变量解析，启动即校验</td></tr>
+          <tr><td>ORM</td><td>SQLAlchemy 2.0 async</td><td>异步会话，与 FastAPI 事件循环同构</td></tr>
+          <tr><td>异步任务</td><td>Celery + Redis</td><td>文档切分/向量化是重活，必须移出请求线程</td></tr>
+          <tr><td>定时任务</td><td>APScheduler + Celery Beat</td><td>进程内轻量任务与分布式周期任务互补</td></tr>
+          <tr><td>向量检索</td><td>numpy → pgvector</td><td>教学用内存余弦，生产用数据库内 ANN</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn"><b>关键认知</b>：RAG 的「检索质量」取决于切分（chunk）和向量化（embedding）两个前置环节，而不是 LLM。先把检索链路做对，再谈模型。</div>
+    </section>
+
+    <!-- 1 -->
+    <section id="s1">
+      <h2><span class="sec-num">1</span>架构总览</h2>
+      <p class="lead">两条核心链路：<b>写入（索引）</b>和<b>读取（问答）</b>。写入走 Celery 异步，读取走同步 RAG 链路。</p>
+
+      <svg viewBox="0 0 720 300" width="100%" style="background:#f8fafc;border:1px solid var(--border);border-radius:12px;">
+        <defs>
+          <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#64748b"/></marker>
+        </defs>
+        <!-- 写入链路 -->
+        <rect x="20" y="30" width="90" height="40" rx="8" fill="#e0f2f1" stroke="#0f766e"/>
+        <text x="65" y="55" text-anchor="middle" font-size="12" fill="#0f766e" font-weight="600">Client</text>
+        <line x1="110" y1="50" x2="175" y2="50" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5"/>
+        <rect x="180" y="30" width="100" height="40" rx="8" fill="#05998b" stroke="#0f766e"/>
+        <text x="230" y="55" text-anchor="middle" font-size="12" fill="#fff" font-weight="600">FastAPI</text>
+        <line x1="280" y1="50" x2="345" y2="50" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5"/>
+        <rect x="350" y="30" width="110" height="40" rx="8" fill="#fef3c7" stroke="#b45309"/>
+        <text x="405" y="50" text-anchor="middle" font-size="12" fill="#92400e" font-weight="600">Redis 队列</text>
+        <text x="405" y="64" text-anchor="middle" font-size="10" fill="#92400e">(Celery broker)</text>
+        <line x1="460" y1="50" x2="525" y2="50" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5"/>
+        <rect x="530" y="30" width="160" height="40" rx="8" fill="#ede9fe" stroke="#6d28d9"/>
+        <text x="610" y="55" text-anchor="middle" font-size="12" fill="#5b21b6" font-weight="600">Worker: 切分→向量化</text>
+
+        <!-- DB -->
+        <line x1="230" y1="70" x2="230" y2="180" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <rect x="180" y="185" width="100" height="44" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+        <text x="230" y="204" text-anchor="middle" font-size="12" fill="#1e40af" font-weight="600">SQLAlchemy</text>
+        <text x="230" y="219" text-anchor="middle" font-size="10" fill="#1e40af">Document / Chunk</text>
+        <line x1="610" y1="70" x2="610" y2="185" stroke="#6d28d9" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+        <text x="625" y="130" font-size="11" fill="#5b21b6">写入 Chunk</text>
+
+        <!-- 读取链路 -->
+        <text x="20" y="240" font-size="11" fill="#64748b" font-weight="700">读取链路：</text>
+        <rect x="180" y="252" width="100" height="36" rx="8" fill="#05998b" stroke="#0f766e"/>
+        <text x="230" y="274" text-anchor="middle" font-size="12" fill="#fff" font-weight="600">FastAPI</text>
+        <line x1="280" y1="270" x2="345" y2="270" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5"/>
+        <rect x="350" y="252" width="120" height="36" rx="8" fill="#fce7f3" stroke="#be185d"/>
+        <text x="410" y="274" text-anchor="middle" font-size="12" fill="#9d174d" font-weight="600">检索 top_k</text>
+        <line x1="470" y1="270" x2="535" y2="270" stroke="#64748b" marker-end="url(#arr)" stroke-width="1.5"/>
+        <rect x="540" y="252" width="150" height="36" rx="8" fill="#dcfce7" stroke="#15803d"/>
+        <text x="615" y="274" text-anchor="middle" font-size="12" fill="#166534" font-weight="600">Prompt + LLM</text>
+        <line x1="230" y1="229" x2="230" y2="252" stroke="#1d4ed8" marker-end="url(#arr)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      </svg>
+
+      <h3>写入链路（异步）</h3>
+      <p>上传接口只做「落库 + 入队」，立即返回。<code class="inline">Celery Worker</code> 从 Redis 取任务，执行切分 → 向量化 → 写 <code class="inline">chunks</code> 表。这样 API 不会被文档解析卡住。</p>
+      <h3>读取链路（同步）</h3>
+      <p>提问接口同步执行：向量化 query → 检索 top_k 切片 → 拼 Prompt → 调 LLM → 返回答案 + 引用来源。</p>
+    </section>
+
+    <!-- 2 -->
+    <section id="s2">
+      <h2><span class="sec-num">2</span>项目结构分层</h2>
+      <p class="lead">分层的核心目的：<b>让变更被限制在单一层内</b>。换 embedding 实现不动路由，换数据库不动 RAG 逻辑。</p>
+      <div class="tree">
+app/<span class="cm">                    # 应用包</span><br>
+├── main.py            <span class="cm"># 入口 + lifespan（启动建表、启调度器）</span><br>
+├── core/              <span class="cm"># 横切基础设施</span><br>
+│   ├── config.py      <span class="cm"># Pydantic Settings 配置</span><br>
+│   ├── db.py          <span class="cm"># SQLAlchemy async engine/session/Base</span><br>
+│   └── celery_app.py  <span class="cm"># Celery 实例 + beat_schedule</span><br>
+├── models/            <span class="cm"># ORM 模型（Document / Chunk / IndexTask）</span><br>
+├── schemas/           <span class="cm"># Pydantic 请求/响应模型</span><br>
+├── api/               <span class="cm"># 路由 + 依赖注入</span><br>
+├── rag/               <span class="cm"># RAG 五组件（可插拔）</span><br>
+├── services/          <span class="cm"># 业务编排（组装 RAG 链路）</span><br>
+├── tasks/             <span class="cm"># Celery 异步任务</span><br>
+└── scheduler.py       <span class="cm"># APScheduler 进程内定时任务</span>
+      </div>
+      <table>
+        <thead><tr><th>层</th><th>职责</th><th>不该做什么</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">api/</code></td><td>参数校验、协议转换、返回响应</td><td>不该写业务逻辑和 SQL 细节</td></tr>
+          <tr><td><code class="inline">services/</code></td><td>编排多个组件完成一个业务动作</td><td>不该直接碰 HTTP</td></tr>
+          <tr><td><code class="inline">rag/</code></td><td>单一职责的纯组件</td><td>不该依赖 FastAPI</td></tr>
+          <tr><td><code class="inline">models/</code></td><td>数据表结构</td><td>不该含校验/业务规则</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3 -->
+    <section id="s3">
+      <h2><span class="sec-num">3</span>配置管理</h2>
+      <p class="lead">用 <code class="inline">pydantic-settings</code> 做类型安全配置：环境变量在启动时被解析并校验，写错字段名或类型会立刻报错。</p>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/core/config.py</span></div><code><span class="tok-k">from</span> functools <span class="tok-k">import</span> lru_cache
+<span class="tok-k">from</span> pydantic_settings <span class="tok-k">import</span> BaseSettings, SettingsConfigDict
+
+<span class="tok-k">class</span> <span class="tok-f">Settings</span>(BaseSettings):
+    model_config = SettingsConfigDict(env_file=<span class="tok-s">".env"</span>, extra=<span class="tok-s">"ignore"</span>)
+
+    database_url: <span class="tok-k">str</span> = <span class="tok-s">"sqlite+aiosqlite:///./rag.db"</span>
+    celery_task_always_eager: <span class="tok-k">bool</span> = <span class="tok-n">False</span>
+    chunk_size: <span class="tok-k">int</span> = <span class="tok-n">500</span>
+    embedding_provider: <span class="tok-k">str</span> = <span class="tok-s">"mock"</span>
+
+<span class="tok-d">@lru_cache</span>
+<span class="tok-k">def</span> <span class="tok-f">get_settings</span>() -&gt; Settings:
+    <span class="tok-k">return</span> Settings()</code></pre>
+      <div class="callout"><b>实践要点</b>：<code class="inline">@lru_cache</code> 保证全局单例；字段名自动映射为大写环境变量（<code class="inline">DATABASE_URL</code> → <code class="inline">database_url</code>）；测试里用 <code class="inline">os.environ</code> 覆盖即可注入不同配置。</div>
+    </section>
+
+    <!-- 4 -->
+    <section id="s4">
+      <h2><span class="sec-num">4</span>数据库层（SQLAlchemy 2.0 async）</h2>
+      <p class="lead">异步引擎与会话工厂是全局单例；每个请求通过依赖注入拿到独立会话。</p>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/core/db.py</span></div><code>engine = create_async_engine(settings.database_url, future=<span class="tok-n">True</span>)
+async_session_factory = async_sessionmaker(engine, expire_on_commit=<span class="tok-n">False</span>)
+
+<span class="tok-k">async def</span> <span class="tok-f">get_db</span>():
+    <span class="tok-k">async with</span> async_session_factory() <span class="tok-k">as</span> session:
+        <span class="tok-k">yield</span> session   <span class="tok-c"># 请求结束自动关闭</span></code></pre>
+      <h3>ORM 模型（SQLAlchemy 2.0 声明式）</h3>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/models/document.py</span></div><code><span class="tok-k">class</span> <span class="tok-f">Document</span>(Base):
+    __tablename__ = <span class="tok-s">"documents"</span>
+    id: Mapped[<span class="tok-k">str</span>] = mapped_column(String(<span class="tok-n">36</span>), primary_key=<span class="tok-n">True</span>)
+    status: Mapped[<span class="tok-k">str</span>] = mapped_column(String(<span class="tok-n">20</span>), index=<span class="tok-n">True</span>)</code></pre>
+      <div class="callout warn"><b>坑</b>：<code class="inline">expire_on_commit=False</code> 是 async 会话的常见做法——commit 后继续访问已加载属性，否则会触发「隐式懒加载」导致 <code class="inline">MissingGreenlet</code> 报错。异步环境里所有关系访问都必须显式加载（<code class="inline">selectinload</code> 等）。</div>
+    </section>
+
+    <!-- 5 -->
+    <section id="s5">
+      <h2><span class="sec-num">5</span>RAG 五步链路</h2>
+      <p class="lead">把 RAG 拆成五个可替换组件：<b>chunker → embedder → retriever → prompt → llm</b>。每一步都通过抽象基类隔离实现。</p>
+
+      <h3>5.1 切分 chunker</h3>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/rag/chunker.py</span></div><code><span class="tok-k">def</span> <span class="tok-f">chunk_text</span>(text, chunk_size=<span class="tok-n">500</span>, overlap=<span class="tok-n">50</span>):
+    <span class="tok-c"># 重叠保证跨切片边界的信息不丢失</span>
+    ...</code></pre>
+      <div class="callout"><b>为什么 overlap 重要</b>：一句话被硬切在边界处时，前半句在一块的末尾、后半句在下一块的开头，检索时任何一块都可能拿不到完整语义。重叠让边界内容重复出现。</div>
+
+      <h3>5.2 向量化 embedder</h3>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/rag/embedder.py</span></div><code><span class="tok-k">class</span> <span class="tok-f">Embedder</span>(ABC):
+    <span class="tok-d">@abstractmethod</span>
+    <span class="tok-k">async def</span> <span class="tok-f">embed</span>(self, texts) -&gt; <span class="tok-k">list</span>[<span class="tok-k">list</span>[<span class="tok-k">float</span>]]: ...</code></pre>
+      <div class="callout warn"><b>坑</b>：入库和查询必须用<b>同一个 embedding 模型</b>，否则向量不在同一空间，相似度全部失真。工程里用 <code class="inline">get_embedder(provider)</code> 统一工厂避免不一致。</div>
+
+      <h3>5.3 检索 retriever</h3>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/rag/retriever.py</span></div><code><span class="tok-c"># 教学：内存全量余弦；生产：pgvector  <=&gt; 运算符库内 ANN</span>
+scored.sort(key=<span class="tok-k">lambda</span> x: x[<span class="tok-n">0</span>], reverse=<span class="tok-n">True</span>)
+<span class="tok-k">return</span> scored[:top_k]</code></pre>
+
+      <h3>5.4 Prompt 构造</h3>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/rag/prompt.py</span></div><code>SYSTEM_PROMPT = <span class="tok-s">"只根据提供的上下文回答，不知道就说不知道，不要编造。"</span>
+user = <span class="tok-s">f"上下文：\n{block}\n\n问题：{question}"</span></code></pre>
+      <div class="callout"><b>实践要点</b>：把「只依据上下文 + 标注引用编号」写进 system prompt，是抑制幻觉最便宜有效的手段。</div>
+
+      <h3>5.5 LLM 调用</h3>
+      <p>抽象基类 + 工厂函数，<code class="inline">mock</code> 模式把检索到的上下文回显，证明「检索」环节生效；生产接入 OpenAI 兼容接口（DeepSeek / 通义 / Ollama 都兼容 <code class="inline">/v1/chat/completions</code>）。</p>
+    </section>
+
+    <!-- 6 -->
+    <section id="s6">
+      <h2><span class="sec-num">6</span>异步任务 Celery</h2>
+      <p class="lead">文档切分 + 向量化是重活，必须移出请求线程。上传接口只入队，立即返回。</p>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/tasks/indexing.py</span></div><code><span class="tok-d">@celery_app.task</span>(name=<span class="tok-s">"app.tasks.indexing.index_document"</span>)
+<span class="tok-k">def</span> <span class="tok-f">index_document</span>(document_id):
+    asyncio.run(_index(document_id))  <span class="tok-c"># 包异步逻辑</span>
+
+<span class="tok-c"># 上传接口里：</span>
+index_document.delay(doc.id)</code></pre>
+      <h3>幂等任务设计</h3>
+      <p>参考 Mini-RAG Project：任务状态落库到 <code class="inline">IndexTask</code> 表，状态机 <code class="inline">queued → running → done/failed</code>。异常时回滚并把 document 置为 <code class="inline">failed</code>，避免「半索引」脏状态。</p>
+      <div class="callout"><b>本地降级</b>：<code class="inline">CELERY_TASK_ALWAYS_EAGER=true</code> 时任务同步执行，无需 Redis 即可开发调试；生产置 <code class="inline">false</code> 并启动 worker。</div>
+    </section>
+
+    <!-- 7 -->
+    <section id="s7">
+      <h2><span class="sec-num">7</span>定时任务：两套互补</h2>
+      <table>
+        <thead><tr><th>维度</th><th>APScheduler</th><th>Celery Beat</th></tr></thead>
+        <tbody>
+          <tr><td>运行位置</td><td>FastAPI 进程内</td><td>独立 Beat 进程</td></tr>
+          <tr><td>部署复杂度</td><td>低</td><td>高（需 Redis）</td></tr>
+          <tr><td>分布式</td><td>否（单机）</td><td>是</td></tr>
+          <tr><td>任务持久化</td><td>需配置</td><td>内置</td></tr>
+          <tr><td>适用</td><td>定时统计/清理/重建索引</td><td>分布式重活（切分/向量化）</td></tr>
+        </tbody>
+      </table>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">app/scheduler.py</span></div><code><span class="tok-c"># async 环境必须用 AsyncIOScheduler，否则阻塞事件循环</span>
+scheduler = AsyncIOScheduler(timezone=<span class="tok-s">"Asia/Shanghai"</span>)
+scheduler.add_job(report_ready_count, <span class="tok-s">"interval"</span>, seconds=<span class="tok-n">60</span>)</code></pre>
+      <div class="callout"><b>结论</b>：两者可共存——<b>重活交给 Celery Beat（分布式、可扩容），轻量周期任务留在 APScheduler（进程内、简单）</b>。</div>
+    </section>
+
+    <!-- 8 -->
+    <section id="s8">
+      <h2><span class="sec-num">8</span>测试</h2>
+      <p class="lead">用 <code class="inline">httpx.ASGITransport</code> 做全链路冒烟测试，不启动真实服务器。</p>
+      <pre><div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="lang">tests/test_rag.py</span></div><code><span class="tok-d">@pytest.mark.asyncio</span>
+<span class="tok-k">async def</span> <span class="tok-f">test_upload_and_chat</span>():
+    <span class="tok-k">async with</span> AsyncClient(transport=ASGITransport(app), ...) <span class="tok-k">as</span> client:
+        <span class="tok-k">await</span> client.post(<span class="tok-s">"/documents/upload"</span>, files=...)
+        resp = <span class="tok-k">await</span> client.post(<span class="tok-s">"/chat"</span>, json={<span class="tok-s">"question"</span>: ...})
+        <span class="tok-k">assert</span> resp.status_code == <span class="tok-n">200</span></code></pre>
+      <div class="callout"><b>实践要点</b>：测试用内存 SQLite + <code class="inline">eager</code> 模式 + 关调度器，零外部依赖、确定性执行。</div>
+    </section>
+
+    <!-- 9 -->
+    <section id="s9">
+      <h2><span class="sec-num">9</span>生产化清单</h2>
+      <table>
+        <thead><tr><th>项</th><th>教学版（本工程）</th><th>生产版</th></tr></thead>
+        <tbody>
+          <tr><td>数据库</td><td>SQLite</td><td>PostgreSQL + pgvector</td></tr>
+          <tr><td>迁移</td><td><code class="inline">create_all</code></td><td>Alembic</td></tr>
+          <tr><td>向量检索</td><td>numpy 内存余弦</td><td>pgvector <code class="inline">&lt;=&gt;</code> / Qdrant HNSW</td></tr>
+          <tr><td>Embedding</td><td>mock 哈希</td><td>真实模型（BGE / text-embedding）</td></tr>
+          <tr><td>LLM</td><td>mock 回显</td><td>OpenAI 兼容接口</td></tr>
+          <tr><td>任务</td><td>eager 同步</td><td>Redis + worker + beat + Flower</td></tr>
+          <tr><td>检索精度</td><td>纯向量</td><td>混合检索（BM25 + 向量）+ rerank</td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><b>下一步</b>：把 <code class="inline">rag/embedder.py</code> 换成真实 embedding、<code class="inline">rag/retriever.py</code> 换成 pgvector 查询，工程其余部分<b>一行都不用改</b>——这正是分层 + 抽象基类的价值。</div>
+    </section>
+
+  </main>
+</div>
+
+<a class="backtop" href="#" title="回到顶部">↑</a>
+<footer>FastAPI × RAG 架构实践系列 · 配套工程见 <code class="inline">fastapi-rag-practice/</code></footer>
+
+<script>
+  // 目录高亮当前章节
+  const links = document.querySelectorAll('.toc a');
+  const sections = [...document.querySelectorAll('section')];
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+</body>
+</html>

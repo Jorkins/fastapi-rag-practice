@@ -1,0 +1,66 @@
+# 一条命令拉起整套：PostgreSQL + Redis + API + Celery Worker + Beat
+# 用法：docker compose up -d --build
+services:
+  db:
+    image: pgvector/pgvector:pg16        # 自带 pgvector 扩展
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ragpass
+      POSTGRES_DB: rag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment: &app_env
+      DATABASE_URL: postgresql+asyncpg://rag:ragpass@db:5432/rag
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "false"     # 生产走真队列
+      ENABLE_SCHEDULER: "false"             # 定时交给 beat 容器
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info --concurrency=2
+    environment: *app_env
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  beat:
+    build: .
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    environment: *app_env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

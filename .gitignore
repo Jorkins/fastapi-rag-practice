@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# 运行时产物
+rag.db
+*.db
+
+# 环境
+.env
+
+# 文章备份 / 生成缓存
+*.bak-*
+article/imgs/.mermaid-cache/
